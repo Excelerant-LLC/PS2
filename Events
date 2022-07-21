@@ -1,0 +1,66 @@
+https://morgantechspace.com/2013/08/active-directory-change-audit-events.html
+https://powershell.org/2019/08/a-better-way-to-search-events/
+https://apps.nsa.gov/iaarchive/library/ia-guidance/security-configuration/applications/assets/public/upload/Spotting-the-Adversary-with-Windows-Event-Log-Monitoring.pdf
+
+## From: https://social.technet.microsoft.com/wiki/contents/articles/51417.how-to-monitor-active-directory-group-membership-changes.aspx
+#$DCs = Get-ADDomainController -Filter *
+$startDate = (get-date).AddDays(-2)
+
+#foreach ($DC in $DCs){
+    $events = Get-Eventlog -LogName Security -ComputerName localhost -after $startDate | where {$_.eventID -eq 4728 -or $_.eventID -eq 4729 -or $_eventID -eq 5136}
+#}
+
+if ($events.Length -gt 0){
+    foreach ($event in $events){ # Member Added to Group
+
+        if (($event.EventID -eq 4728 )){
+            write-host "Group: "$event.ReplacementStrings[2] "`tAction: Member added `tWhen: "$event.TimeGenerated "`tWho: "$event.ReplacementStrings[6] "`tAccount added: "$event.ReplacementStrings[0]
+        }
+        # Member Removed from Group
+        if (($event.EventID -eq 4729 )) {
+            write-host "Group: "$event.ReplacementStrings[2] "`tAction: Member removed `tWhen: "$event.TimeGenerated "`tWho: "$event.ReplacementStrings[6] "`tAccount removed: "$event.ReplacementStrings[0]
+        }
+        if (($event.EventID -eq 5136 )){
+            $event.ReplacementStrings
+        }
+    }
+}
+
+
+## From:https://adamtheautomator.com/audit-group-membership-changes-active-directory/
+## Create an array to save all events
+[email protected]()
+
+## Find the Domain SID to filter administrative groups
+$LocalDomain=(Get-addomain).domainsid
+
+## Define the earliest event date to search from
+$dateFrom=(Get-Date).AddDays(-1)
+
+## Find all of the AD administrative groups
+$ADAdminGroups=(Get-ADGroup -Properties objectSid -Filter * |where {($_.ObjectSid.Value -match ("-\d{3}$")) -and ($_.Objectsid.value.length -gt $LocalDomain.Value.length)}).Name
+
+## Query the Security event log for all events with IDs 4728, 4732 or 4756
+## that start from $dateFrom and end right now.
+$PossibleEvents= Get-WinEvent -FilterHashtable @{id=(4728,4732,4756)
+                                                logname="Security"
+                                                StartTime=$dateFrom
+                                                EndTime=(get-date)}
+
+## Begin processing each Windows event found
+Foreach ($Events in $PossibleEvents) {
+	## Check if the event was for a membership change for an administrative group
+	if ($ADAdminGroups | where {$Events.message -match $_}){
+		## If so, add an object with the time of event and the details to the $EventResult array
+		$Result=[pscustomObject]@{
+			Date=($foreach.current).TimeCreated
+			Message=($foreach.current).message
+		}
+    
+    $EventsResult+=$Result           
+	}
+}
+## If any events found, send an email with the event as the body
+if ($EventsResult){
+	Send-MailMessage -From "[email protected]" -To "[email protected]" -Body ($EventsResult |Out-String) -SmtpServer Out.YourSMTPServer.com
+}
